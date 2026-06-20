@@ -62,7 +62,8 @@ def main():
     balance_tracker = BalanceTracker(history_path)
 
     # 检查 API Key ──────────────────────────────────────────────────
-    api_key = config_mgr.get_api_key()
+    # 首次使用：config.json 不存在或没有 key → 弹出输入框
+    api_key = config_mgr.get("api_key", "").strip()
     if not api_key:
         # 首次使用：弹出输入框
         import tkinter as tk
