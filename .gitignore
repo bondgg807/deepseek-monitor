@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+build/
+*.spec
+config.json
+balance_history.json
+error.log
+*.lnk
+nul
+launch.vbs
