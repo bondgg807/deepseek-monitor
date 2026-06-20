@@ -61,15 +61,28 @@ def main():
     api_client = APIClient()
     balance_tracker = BalanceTracker(history_path)
 
-    # 检查 API Key
+    # 检查 API Key ──────────────────────────────────────────────────
     api_key = config_mgr.get_api_key()
     if not api_key:
-        print("[DeepSeek Monitor] 未找到 API Key。")
-        print("  请将 API Key 写入 config.json：")
-        print(f'  {config_path}')
-        print('  格式：{"api_key": "sk-..."}')
-        # 仍然启动 GUI，用户可以在状态栏看到错误提示
-        # 也可以通过 config.json 手动配置后刷新
+        # 首次使用：弹出输入框
+        import tkinter as tk
+        from tkinter import messagebox
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        key = tk.simpledialog.askstring(
+            "DeepSeek Monitor - 首次配置",
+            "请输入你的 DeepSeek API Key：\n（可从 platform.deepseek.com 获取）",
+            parent=root,
+            show="*",
+        )
+        root.destroy()
+        if key and key.strip().startswith("sk-"):
+            config_mgr.set_api_key(key.strip())
+            api_key = key.strip()
+        else:
+            messagebox.showerror("错误", "API Key 无效，程序将退出。\n请重新启动并输入以 sk- 开头的 Key。")
+            sys.exit(1)
 
     # ── 配置主题 ──────────────────────────────────────────────────
     setup_theme()
