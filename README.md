@@ -49,10 +49,7 @@ python -m PyInstaller --onefile --windowed --icon=icon.ico --add-data "icon.ico;
 
 ## 定价
 
-基于 DeepSeek v4-pro（2025 年定价）：
-- 输入：$0.435/1M tokens
-- 输出：$0.87/1M tokens
-- 混合估算：$0.54375/1M tokens（75% 输入 + 25% 输出）
+基于 DeepSeek v4-pro token 价格估算
 
 ## 许可证
 
