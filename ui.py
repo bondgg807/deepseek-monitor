@@ -96,13 +96,33 @@ class BarChart(ctk.CTkCanvas):
                          bg=COLORS["card_bg"], highlightthickness=0, bd=0, **kwargs)
         self._v = 0  # 版本号，用于双缓冲标签
         self._sweep_job = None  # 扫光定时器
+        self._call_count = 0    # 调用计数，用于定期重建
 
     def set_data(self, buckets: list[dict]):
         """buckets: [{label, tokens, cny}, ...] 时间从左到右
 
         双缓冲：新内容全部画到 v{N} 标签，画完再删 v{N-1}。
-        配合 LockWindowUpdate 确保同一帧呈现。
+        每 30 次调用触发画布重建，释放 Tk 内存。
         """
+        # ── 定期重建画布，释放长期累积的 Tk 内存 ──
+        self._call_count += 1
+        if self._call_count >= 30:
+            self._call_count = 0
+            # 停掉扫光
+            if self._sweep_job:
+                self.after_cancel(self._sweep_job)
+                self._sweep_job = None
+            # 重建
+            parent = self.master  # bar_frame
+            self.destroy()
+            new = BarChart(parent)
+            new.pack(fill="both", expand=True, padx=6, pady=6)
+            # 更新顶层引用
+            monitor = parent.master.master  # DeepSeekMonitor
+            monitor.bar_chart = new
+            new.set_data(buckets)
+            return
+
         self._v += 1
         tag = f"v{self._v}"           # 本次绘制的标签
         prev = f"v{self._v - 1}"      # 上次的标签，画完后删除
