@@ -5,6 +5,7 @@ import math
 import os
 import threading
 import time
+import tkinter as tk
 import webbrowser
 import winsound
 from typing import Optional
@@ -333,23 +334,26 @@ class BalanceCard(ctk.CTkFrame):
         # 金额行：¥ + 刷新图标
         amount_row = ctk.CTkFrame(left, fg_color="transparent")
         amount_row.pack(fill="x")
+
         self.balance_label = ctk.CTkLabel(
             amount_row, text="--", font=ctk.CTkFont(size=24, weight="bold"),
             text_color=COLORS["text_primary"])
         self.balance_label.pack(side="left")
 
-        # 刷新图标
-        self.refresh_btn = ctk.CTkButton(
-            amount_row, text="⟳", font=ctk.CTkFont(size=16),
-            fg_color="transparent", hover_color=COLORS["card_bg"],
-            text_color=COLORS["text_secondary"],
-            border_width=0, width=24, height=24,
-            command=self._on_refresh if self._on_refresh else None)
-        self.refresh_btn.pack(side="left", padx=(4, 0))
+        self.refresh_canvas = tk.Canvas(amount_row, width=14, height=14,
+                                         bg=COLORS["card_bg"],
+                                         highlightthickness=0, bd=0,
+                                         cursor="hand2")
+        self.refresh_canvas.pack(side="left", padx=(4, 0))
+        self._refresh_base = None   # PIL 原图（缓存）
+        self._refresh_img_tk = None
+        self._draw_refresh_icon()
+        self.refresh_canvas.bind("<Button-1>", lambda e: self._on_refresh and self._on_refresh())
+        self.refresh_canvas.bind("<Enter>", self._on_icon_enter)
+        self.refresh_canvas.bind("<Leave>", self._on_icon_leave)
         self._spinning = False
         self._pulse_job = None
-        self.refresh_btn.bind("<Enter>", self._on_icon_enter)
-        self.refresh_btn.bind("<Leave>", self._on_icon_leave)
+        self._spin_angle = 0
 
         self.consumption_label = ctk.CTkLabel(
             left, text="", font=ctk.CTkFont(size=10),
@@ -440,13 +444,12 @@ class BalanceCard(ctk.CTkFrame):
                                               text_color=COLORS["text_secondary"])
 
     def _on_icon_enter(self, event=None):
-        if not self._spinning:
-            self.refresh_btn.configure(text_color=COLORS["accent_blue"])
+        self._draw_refresh_icon(color="#ffffff", angle=self._spin_angle)
         from tkinter import Toplevel, Label
         self._tooltip_win = Toplevel(self)
         self._tooltip_win.wm_overrideredirect(True)
         self._tooltip_win.attributes("-topmost", True, "-alpha", 0.0)
-        x = self.refresh_btn.winfo_rootx() + 24
+        x = self.refresh_canvas.winfo_rootx() + 24
         y = self.refresh_btn.winfo_rooty() - 6
         self._tooltip_win.wm_geometry(f"+{x}+{y}")
         Label(self._tooltip_win, text="刷新", font=("Microsoft YaHei UI", 8),
@@ -459,8 +462,7 @@ class BalanceCard(ctk.CTkFrame):
         _fade(0)
 
     def _on_icon_leave(self, event=None):
-        if not self._spinning:
-            self.refresh_btn.configure(text_color=COLORS["text_secondary"])
+        self._draw_refresh_icon(angle=self._spin_angle)
         if hasattr(self, '_tooltip_win') and self._tooltip_win:
             self._tooltip_win.destroy()
             self._tooltip_win = None
@@ -537,26 +539,47 @@ class BalanceCard(ctk.CTkFrame):
                 self.after(25, lambda: _step(i + 1))
         _step(0)
 
+    def _draw_refresh_icon(self, color=None, angle=0):
+        """使用下载的刷新图标，从原图旋转。"""
+        from PIL import Image, ImageTk
+        if self._refresh_base is None:
+            import sys, os
+            if getattr(sys, 'frozen', False):
+                base = os.path.join(sys._MEIPASS, "refresh_icon.png")
+            else:
+                base = os.path.join(os.path.dirname(os.path.abspath(__file__)), "refresh_icon.png")
+            self._refresh_base = Image.open(base).convert("RGBA")
+        if color is None:
+            color = COLORS["text_secondary"]
+        r, g, b = int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
+        img = self._refresh_base.copy()
+        pixels = img.load()
+        for y in range(img.height):
+            for x in range(img.width):
+                a = pixels[x, y][3]
+                if a > 0:
+                    pixels[x, y] = (r, g, b, a)
+        sz = 12
+        img = img.resize((sz, sz), Image.LANCZOS)
+        # 初始偏移 45°（顺时针）
+        img = img.rotate(angle - 45, expand=False, resample=Image.BILINEAR)
+        self._refresh_img_tk = ImageTk.PhotoImage(img)
+        self.refresh_canvas.delete("all")
+        self.refresh_canvas.create_image(0, 0, image=self._refresh_img_tk, anchor="nw")
+
     def spin_icon(self):
-        """手动刷新：占位符 + 呼吸脉冲。"""
+        """加载中：PIL 旋转，1s 转一圈。"""
         self._spinning = True
         self.balance_label.configure(text="¥ **.**", text_color=COLORS["text_secondary"])
-        colors = [
-            COLORS["text_secondary"],
-            "#8888CC",
-            COLORS["accent_blue"],
-            "#8888CC",
-        ]
-        self._pulse_phase = 0
+        self._spin_angle = 0
 
-        def _pulse():
+        def _rotate():
             if self._spinning:
-                i = self._pulse_phase % len(colors)
-                self.refresh_btn.configure(text_color=colors[i])
-                self._pulse_phase += 1
-                self._pulse_job = self.after(120, _pulse)
+                self._spin_angle = (self._spin_angle - 24) % 360  # 顺时针 24° × 30fps = 720°/s = 0.5s/圈
+                self._draw_refresh_icon(angle=self._spin_angle)
+                self._pulse_job = self.after(33, _rotate)
 
-        _pulse()
+        _rotate()
 
     def stop_spin(self):
         """加载完成，恢复静止。"""
@@ -564,7 +587,8 @@ class BalanceCard(ctk.CTkFrame):
         if self._pulse_job:
             self.after_cancel(self._pulse_job)
             self._pulse_job = None
-        self.refresh_btn.configure(text_color=COLORS["text_secondary"])
+        self._spin_angle = 0
+        self._draw_refresh_icon(angle=0)
 
     def _flash(self, color: str):
         self.balance_label.configure(text_color=color)
